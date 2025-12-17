@@ -10,35 +10,49 @@ logger = logging.getLogger(__name__)
 
 def create_extraction_prompt(combined_context: str) -> str:
     """
-    Create STRICT prompt for tinyllama to return ONLY valid JSON.
-    No explanations, no markdown, no extra text.
+    Create STRICT prompt that enforces CONTEXT-ONLY extraction.
+    LLM must NOT use prior knowledge or hallucinate values.
     """
-    # Limit context to ~2000 chars (TinyLlama optimal input)
+    # Limit context to ~2000 chars (optimal for llama3.2)
     max_context_length = 2000
     if len(combined_context) > max_context_length:
         logger.info(f"⚠️  TRUNCATING context from {len(combined_context)} to {max_context_length} chars")
         combined_context = combined_context[:max_context_length] + "\n...[content truncated]"
     
-    prompt = f"""You are a data extraction system. Extract structured information and output ONLY valid JSON.
+    prompt = f"""You are a STRICT INFORMATION EXTRACTOR. Your job is to extract facts ONLY from the provided context.
 
-INPUT DATA:
+⚠️ CRITICAL RULES:
+1. Use ONLY the provided context below as your source of truth
+2. Do NOT use your prior knowledge or training data
+3. Do NOT infer, guess, or assume any information
+4. Do NOT use placeholder values like "Product A", "Industry X", etc.
+5. If information is NOT explicitly present in the context, leave that field EMPTY ([] or "")
+6. Every value you extract must appear verbatim (or near-verbatim) in the context text
+7. Extract ONLY what is clearly stated - no interpretations
+
+CONTEXT (your ONLY source of information):
 {combined_context}
 
-OUTPUT FORMAT (copy this structure exactly):
+EXTRACT the following information from the context above:
+- business_summary: Brief description of what the company does (1-2 sentences from context)
+- product_lines: Specific product or service names mentioned (exact names from context)
+- target_industries: Industries explicitly mentioned as targets/markets (from context only)
+- regions: Geographic regions/countries mentioned for operations/markets (from context only)
+- hiring_focus: Job roles/positions mentioned in hiring/job postings (from context only)
+- key_recent_events: Recent events, announcements, or news (from context only)
+
+OUTPUT FORMAT (return ONLY this JSON, no markdown, no explanations):
 {{
-  "business_summary": "brief description of company",
-  "product_lines": ["product A", "product B"],
-  "target_industries": ["industry X", "industry Y"],
-  "regions": ["North America", "Europe"],
-  "hiring_focus": ["engineer", "analyst"],
-  "key_recent_events": ["event 1", "event 2"]
+  "business_summary": "extract from context or leave empty",
+  "product_lines": ["exact name from context"],
+  "target_industries": ["exact industry from context"],
+  "regions": ["exact region from context"],
+  "hiring_focus": ["exact role from context"],
+  "key_recent_events": ["exact event from context"]
 }}
 
-RULES:
-1. Return ONLY the JSON object
-2. NO explanations
-3. NO markdown (no ```)
-4. NO extra text
+REMEMBER: If you cannot find explicit information in the context above, return [] or "" for that field.
+Do NOT make up, infer, or use external knowledge.
 
 JSON:"""
     return prompt
@@ -96,6 +110,9 @@ def extract_with_tinyllama(combined_context: str) -> dict:
         
         # Validate and normalize the extracted data
         extracted_data = validate_and_normalize(extracted_data)
+        
+        # CRITICAL: Remove hallucinated values not found in context
+        extracted_data = filter_hallucinations(extracted_data, combined_context)
         
         logger.info("Successfully extracted structured data from LLM")
         return extracted_data
@@ -212,15 +229,102 @@ def validate_and_normalize(data: dict) -> dict:
     
     return validated
 
+def filter_hallucinations(extracted_data: dict, context: str) -> dict:
+    """
+    CRITICAL POST-PROCESSING: Remove any extracted values that don't appear in the context.
+    This prevents hallucinated outputs from reaching the UI.
+    
+    Args:
+        extracted_data: Data extracted by LLM
+        context: Original context text
+        
+    Returns:
+        dict: Filtered data with only verified values
+    """
+    # Convert context to lowercase for case-insensitive matching
+    context_lower = context.lower()
+    
+    # Define placeholder patterns that indicate hallucination
+    placeholder_patterns = [
+        r'product\s*[a-z]\b',  # "Product A", "Product B", etc.
+        r'industry\s*[a-z]\b',  # "Industry X", "Industry Y", etc.
+        r'region\s*[a-z]\b',    # "Region A", etc.
+        r'example',             # "Example", "example product"
+        r'placeholder',         # "Placeholder"
+        r'^[a-z]$',            # Single letters: "A", "B", "X", "Y"
+    ]
+    
+    filtered = extracted_data.copy()
+    
+    # Filter list fields (product_lines, target_industries, etc.)
+    for field in ['product_lines', 'target_industries', 'regions', 'hiring_focus', 'key_recent_events']:
+        if field in filtered and isinstance(filtered[field], list):
+            verified_items = []
+            
+            for item in filtered[field]:
+                item_str = str(item).strip()
+                
+                # Skip empty items
+                if not item_str:
+                    continue
+                
+                # Check if item matches placeholder pattern
+                is_placeholder = any(re.search(pattern, item_str.lower()) for pattern in placeholder_patterns)
+                if is_placeholder:
+                    logger.warning(f"❌ REMOVED PLACEHOLDER: {field} = '{item_str}'")
+                    continue
+                
+                # Check if item appears in context (case-insensitive substring match)
+                # For multi-word items, check if at least 50% of words appear
+                words = item_str.lower().split()
+                if len(words) == 1:
+                    # Single word: must appear in context
+                    if words[0] in context_lower:
+                        verified_items.append(item_str)
+                    else:
+                        logger.warning(f"❌ REMOVED HALLUCINATION: {field} = '{item_str}' (not found in context)")
+                else:
+                    # Multi-word: at least 50% of words must appear
+                    matching_words = sum(1 for word in words if word in context_lower)
+                    if matching_words >= len(words) * 0.5:
+                        verified_items.append(item_str)
+                    else:
+                        logger.warning(f"❌ REMOVED HALLUCINATION: {field} = '{item_str}' (insufficient match: {matching_words}/{len(words)} words)")
+            
+            filtered[field] = verified_items
+    
+    # Filter business_summary (check if it's too generic or contains placeholders)
+    if 'business_summary' in filtered:
+        summary = filtered['business_summary']
+        is_placeholder = any(re.search(pattern, summary.lower()) for pattern in placeholder_patterns)
+        
+        if is_placeholder or len(summary) < 20:
+            logger.warning(f"❌ REMOVED GENERIC SUMMARY: '{summary}'")
+            filtered['business_summary'] = ""
+    
+    # Log filtering results
+    removed_count = sum(
+        len(extracted_data.get(field, [])) - len(filtered.get(field, []))
+        for field in ['product_lines', 'target_industries', 'regions', 'hiring_focus', 'key_recent_events']
+    )
+    
+    if removed_count > 0:
+        logger.info(f"✅ HALLUCINATION FILTER: Removed {removed_count} hallucinated/placeholder values")
+    else:
+        logger.info("✅ HALLUCINATION FILTER: All extracted values verified")
+    
+    return filtered
+
 def get_fallback_structure() -> dict:
     """
     Return a safe fallback structure when LLM extraction fails.
+    Returns EMPTY fields, not placeholder text.
     
     Returns:
         dict: Default structure with empty values
     """
     return {
-        "business_summary": "Data extraction failed. Please try uploading data again.",
+        "business_summary": "",
         "product_lines": [],
         "target_industries": [],
         "regions": [],

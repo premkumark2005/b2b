@@ -61,7 +61,10 @@ def insert_company_profile(company_name: str, extracted_fields: dict):
     else:
         # If updated existing, get the _id
         existing = profiles_collection.find_one({"company_name": company_name})
-        return str(existing['_id'])
+        if existing and '_id' in existing:
+            return str(existing['_id'])
+        else:
+            raise Exception(f"Failed to retrieve profile ID for company: {company_name}")
 
 def get_company_profile(company_name: str):
     """
