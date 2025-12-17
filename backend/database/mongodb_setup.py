@@ -24,7 +24,8 @@ def get_profiles_collection():
 
 def insert_company_profile(company_name: str, extracted_fields: dict):
     """
-    Store final unified profile in MongoDB.
+    Store/update final unified profile in MongoDB.
+    Uses replace_one with upsert=True to replace old profile with new one.
     
     Schema:
     {
@@ -37,17 +38,30 @@ def insert_company_profile(company_name: str, extracted_fields: dict):
             hiring_focus: str,
             key_recent_events: list
         },
-        created_at: datetime
+        created_at: datetime,
+        updated_at: datetime
     }
     """
     profile = {
         "company_name": company_name,
         "extracted_fields": extracted_fields,
-        "created_at": datetime.utcnow()
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow()
     }
     
-    result = profiles_collection.insert_one(profile)
-    return str(result.inserted_id)
+    # Replace existing profile or insert new one (upsert)
+    result = profiles_collection.replace_one(
+        {"company_name": company_name},
+        profile,
+        upsert=True
+    )
+    
+    if result.upserted_id:
+        return str(result.upserted_id)
+    else:
+        # If updated existing, get the _id
+        existing = profiles_collection.find_one({"company_name": company_name})
+        return str(existing['_id'])
 
 def get_company_profile(company_name: str):
     """
