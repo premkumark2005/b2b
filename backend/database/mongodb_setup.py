@@ -104,10 +104,12 @@ def insert_industry_mapping(
     sub_industry: str,
     sic_code: str,
     sic_description: str,
-    confidence: float
+    confidence: float,
+    short_description: str = "",
+    long_description: str = ""
 ) -> str:
     """
-    Store industry classification mapping for a company.
+    Store industry classification mapping for a company with descriptions.
     
     Args:
         company_name: Name of the company
@@ -119,6 +121,8 @@ def insert_industry_mapping(
         sic_code: SIC code
         sic_description: SIC description
         confidence: Similarity confidence score (0-1)
+        short_description: 1-2 sentence company description
+        long_description: 2-3 paragraph company description
         
     Returns:
         str: ID of inserted/updated document
@@ -133,6 +137,8 @@ def insert_industry_mapping(
         "sic_code": sic_code,
         "sic_description": sic_description,
         "confidence": confidence,
+        "short_description": short_description,
+        "long_description": long_description,
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow()
     }

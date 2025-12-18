@@ -1,6 +1,8 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
-from models.schemas import ProductUploadRequest, UploadResponse
+from typing import Optional
+from models.schemas import UploadResponse
 from utils.pdf_parser import extract_text_from_pdf, extract_product_content
+from utils.html_parser import html_to_text
 from database.chromadb_setup import get_product_db, insert_into_collection
 import uuid
 
@@ -9,8 +11,9 @@ router = APIRouter()
 @router.post("/upload", response_model=UploadResponse)
 async def upload_product_data(
     company_name: str = Form(...),
-    plain_text: str = Form(None),
-    pdf_file: UploadFile = File(None)
+    plain_text: Optional[str] = Form(None),
+    pdf_file: Optional[UploadFile] = File(None),
+    html_file: Optional[UploadFile] = File(None)
 ):
     """
     Endpoint 2: Product Brochure Upload
@@ -18,6 +21,7 @@ async def upload_product_data(
     User can upload:
     a) PDF brochure
     b) Plain text
+    c) HTML file
     
     Processes and stores in product_db collection.
     """
@@ -25,14 +29,19 @@ async def upload_product_data(
         text = ""
         
         # Process based on input type
-        if pdf_file:
+        if html_file:
+            print(f"Processing HTML file: {html_file.filename}")
+            html_content = await html_file.read()
+            html_text = html_content.decode('utf-8')
+            text = html_to_text(html_text)
+        elif pdf_file:
             # Extract text from PDF using PyPDF2
             text = extract_text_from_pdf(pdf_file.file)
         elif plain_text:
             # Use plain text directly
             text = plain_text
         else:
-            raise HTTPException(status_code=400, detail="Must provide PDF file or plain text")
+            raise HTTPException(status_code=400, detail="Must provide HTML file, PDF file, or plain text")
         
         # Extract product-related content
         product_text = extract_product_content(text)

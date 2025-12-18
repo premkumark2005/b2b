@@ -6,6 +6,7 @@ const NewsUpload = ({ companyName, onSuccess }) => {
   const [inputType, setInputType] = useState('text');
   const [newsUrl, setNewsUrl] = useState('');
   const [newsText, setNewsText] = useState('');
+  const [htmlFile, setHtmlFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -21,20 +22,24 @@ const NewsUpload = ({ companyName, onSuccess }) => {
     setMessage('');
 
     try {
-      const data = { company_name: companyName };
+      const formData = new FormData();
+      formData.append('company_name', companyName);
       
       if (inputType === 'url') {
-        data.news_url = newsUrl;
+        formData.append('news_url', newsUrl);
+      } else if (inputType === 'html') {
+        formData.append('html_file', htmlFile);
       } else {
-        data.news_text = newsText;
+        formData.append('news_text', newsText);
       }
 
-      const response = await uploadNewsData(data);
+      const response = await uploadNewsData(formData);
       setMessage(`✅ ${response.message}`);
       
       // Clear form
       setNewsUrl('');
       setNewsText('');
+      setHtmlFile(null);
       
       if (onSuccess) onSuccess();
     } catch (error) {
@@ -61,6 +66,15 @@ const NewsUpload = ({ companyName, onSuccess }) => {
           <label>
             <input
               type="radio"
+              value="html"
+              checked={inputType === 'html'}
+              onChange={(e) => setInputType(e.target.value)}
+            />
+            HTML File
+          </label>
+          <label>
+            <input
+              type="radio"
               value="url"
               checked={inputType === 'url'}
               onChange={(e) => setInputType(e.target.value)}
@@ -68,16 +82,6 @@ const NewsUpload = ({ companyName, onSuccess }) => {
             News URL
           </label>
         </div>
-
-        {inputType === 'url' && (
-          <input
-            type="url"
-            placeholder="Enter news article URL"
-            value={newsUrl}
-            onChange={(e) => setNewsUrl(e.target.value)}
-            required
-          />
-        )}
 
         {inputType === 'text' && (
           <textarea
@@ -89,8 +93,30 @@ const NewsUpload = ({ companyName, onSuccess }) => {
           />
         )}
 
+        {inputType === 'html' && (
+          <div>
+            <input
+              type="file"
+              accept=".html,.htm"
+              onChange={(e) => setHtmlFile(e.target.files[0])}
+              required
+            />
+            {htmlFile && <p className="file-name">📄 {htmlFile.name}</p>}
+          </div>
+        )}
+
+        {inputType === 'url' && (
+          <input
+            type="url"
+            placeholder="Enter news article URL"
+            value={newsUrl}
+            onChange={(e) => setNewsUrl(e.target.value)}
+            required
+          />
+        )}
+
         <button type="submit" disabled={loading}>
-          {loading ? 'Uploading...' : 'Upload News Data'}
+          {loading ? '⏳ Uploading...' : '📤 Upload News Data'}
         </button>
       </form>
       {message && <p className="message">{message}</p>}

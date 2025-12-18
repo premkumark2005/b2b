@@ -5,8 +5,7 @@ import { uploadWebsiteData } from '../services/api';
 const WebsiteUpload = ({ companyName, onSuccess }) => {
   const [inputType, setInputType] = useState('url');
   const [url, setUrl] = useState('');
-  const [htmlContent, setHtmlContent] = useState('');
-  const [plainText, setPlainText] = useState('');
+  const [htmlFile, setHtmlFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -18,27 +17,35 @@ const WebsiteUpload = ({ companyName, onSuccess }) => {
       return;
     }
 
+    if (inputType === 'url' && !url) {
+      setMessage('⚠️ Please enter website URL');
+      return;
+    }
+
+    if (inputType === 'file' && !htmlFile) {
+      setMessage('⚠️ Please select an HTML file');
+      return;
+    }
+
     setLoading(true);
     setMessage('');
 
     try {
-      const data = { company_name: companyName };
+      const formData = new FormData();
+      formData.append('company_name', companyName);
       
       if (inputType === 'url') {
-        data.url = url;
-      } else if (inputType === 'html') {
-        data.html_content = htmlContent;
+        formData.append('url', url);
       } else {
-        data.plain_text = plainText;
+        formData.append('html_file', htmlFile);
       }
 
-      const response = await uploadWebsiteData(data);
+      const response = await uploadWebsiteData(formData);
       setMessage(`✅ ${response.message}`);
       
       // Clear form
       setUrl('');
-      setHtmlContent('');
-      setPlainText('');
+      setHtmlFile(null);
       
       if (onSuccess) onSuccess();
     } catch (error) {
@@ -65,55 +72,38 @@ const WebsiteUpload = ({ companyName, onSuccess }) => {
           <label>
             <input
               type="radio"
-              value="html"
-              checked={inputType === 'html'}
+              value="file"
+              checked={inputType === 'file'}
               onChange={(e) => setInputType(e.target.value)}
             />
-            HTML Content
-          </label>
-          <label>
-            <input
-              type="radio"
-              value="text"
-              checked={inputType === 'text'}
-              onChange={(e) => setInputType(e.target.value)}
-            />
-            Plain Text
+            HTML File
           </label>
         </div>
 
         {inputType === 'url' && (
           <input
             type="url"
-            placeholder="Enter website URL"
+            placeholder="Enter website URL (e.g., https://nvidia.com)"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             required
           />
         )}
 
-        {inputType === 'html' && (
-          <textarea
-            placeholder="Paste HTML content here"
-            value={htmlContent}
-            onChange={(e) => setHtmlContent(e.target.value)}
-            rows="6"
-            required
-          />
-        )}
-
-        {inputType === 'text' && (
-          <textarea
-            placeholder="Paste plain text content here"
-            value={plainText}
-            onChange={(e) => setPlainText(e.target.value)}
-            rows="6"
-            required
-          />
+        {inputType === 'file' && (
+          <div>
+            <input
+              type="file"
+              accept=".html,.htm"
+              onChange={(e) => setHtmlFile(e.target.files[0])}
+              required
+            />
+            {htmlFile && <p className="file-name">📄 {htmlFile.name}</p>}
+          </div>
         )}
 
         <button type="submit" disabled={loading}>
-          {loading ? 'Uploading...' : 'Upload Website Data'}
+          {loading ? '⏳ Processing...' : '🚀 Upload Website Data'}
         </button>
       </form>
       {message && <p className="message">{message}</p>}

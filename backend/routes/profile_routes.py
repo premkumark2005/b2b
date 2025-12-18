@@ -14,6 +14,7 @@ from services.llm_service import (
     extract_hiring_focus,
     extract_recent_events
 )
+from services.description_generator import generate_short_description, generate_long_description
 from services.industry_matcher import get_industry_matcher
 from datetime import datetime
 from typing import Dict, List
@@ -275,6 +276,21 @@ Products: {', '.join(extracted_fields.get('product_lines', []))}
 Industries: {', '.join(extracted_fields.get('target_industries', []))}
 """
         
+        # Create combined context for description generation (all sources)
+        combined_context_for_descriptions = f"""
+=== WEBSITE INFORMATION ===
+{' '.join(web_docs_business + web_docs_hiring + web_docs_events)}
+
+=== PRODUCT INFORMATION ===
+{' '.join(product_docs_business + product_docs_hiring + product_docs_events)}
+
+=== JOB POSTINGS ===
+{' '.join(job_docs_business + job_docs_hiring + job_docs_events)}
+
+=== NEWS & EVENTS ===
+{' '.join(news_docs_business + news_docs_hiring + news_docs_events)}
+"""
+        
         # Match company to industry classification
         matcher = get_industry_matcher()
         industry_match = matcher.match_company(combined_company_text, company_name)
@@ -289,7 +305,20 @@ Industries: {', '.join(extracted_fields.get('target_industries', []))}
             print(f"   - Confidence: {industry_match['confidence']:.3f}")
             print("="*80 + "\n")
             
-            # Store industry mapping in MongoDB
+            # Generate company descriptions using LLM
+            print("\n" + "="*80)
+            print("GENERATING COMPANY DESCRIPTIONS:")
+            print("="*80)
+            
+            # Get combined context for description generation
+            short_desc = generate_short_description(combined_context_for_descriptions, company_name)
+            print(f"✅ Short Description: {short_desc}")
+            
+            long_desc = generate_long_description(combined_context_for_descriptions, company_name, industry_match)
+            print(f"✅ Long Description: {len(long_desc)} characters")
+            print("="*80 + "\n")
+            
+            # Store industry mapping in MongoDB with descriptions
             insert_industry_mapping(
                 company_name=company_name,
                 company_domain=company_domain,  # Use actual domain from frontend
@@ -299,7 +328,9 @@ Industries: {', '.join(extracted_fields.get('target_industries', []))}
                 sub_industry=industry_match['sub_industry'],
                 sic_code=industry_match['sic_code'],
                 sic_description=industry_match['sic_description'],
-                confidence=industry_match['confidence']
+                confidence=industry_match['confidence'],
+                short_description=short_desc,
+                long_description=long_desc
             )
         else:
             print("⚠️ No industry classification match found")

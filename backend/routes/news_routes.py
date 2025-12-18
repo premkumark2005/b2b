@@ -1,5 +1,6 @@
-from fastapi import APIRouter, HTTPException
-from models.schemas import NewsUploadRequest, UploadResponse
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from typing import Optional
+from models.schemas import UploadResponse
 from utils.scraper import scrape_with_zenrows
 from utils.html_parser import html_to_text
 from database.chromadb_setup import get_news_db, insert_into_collection
@@ -16,13 +17,19 @@ def extract_news_events(text: str) -> str:
     return text.strip()
 
 @router.post("/upload", response_model=UploadResponse)
-async def upload_news_data(request: NewsUploadRequest):
+async def upload_news_data(
+    company_name: str = Form(...),
+    news_text: Optional[str] = Form(None),
+    news_url: Optional[str] = Form(None),
+    html_file: Optional[UploadFile] = File(None)
+):
     """
     Endpoint 4: News Upload
     
     User can provide:
     a) News text
     b) News URL (scrape using ZenRows)
+    c) HTML file
     
     Processes and stores in news_db collection.
     """
@@ -30,15 +37,20 @@ async def upload_news_data(request: NewsUploadRequest):
         text = ""
         
         # Process based on input type
-        if request.news_url:
+        if html_file:
+            print(f"Processing HTML file: {html_file.filename}")
+            html_content = await html_file.read()
+            html_text = html_content.decode('utf-8')
+            text = html_to_text(html_text)
+        elif news_url:
             # Scrape using ZenRows API
-            html = scrape_with_zenrows(request.news_url)
+            html = scrape_with_zenrows(news_url)
             text = html_to_text(html)
-        elif request.news_text:
+        elif news_text:
             # Use news text directly
-            text = request.news_text
+            text = news_text
         else:
-            raise HTTPException(status_code=400, detail="Must provide news text or news URL")
+            raise HTTPException(status_code=400, detail="Must provide HTML file, news text, or news URL")
         
         # Extract key recent events
         news_events = extract_news_events(text)
@@ -54,12 +66,12 @@ async def upload_news_data(request: NewsUploadRequest):
         news_db = get_news_db()
         
         for idx, chunk in enumerate(chunks):
-            doc_id = f"news_{request.company_name}_{idx}_{uuid.uuid4().hex[:8]}"
+            doc_id = f"news_{company_name}_{idx}_{uuid.uuid4().hex[:8]}"
             
             insert_into_collection(
                 collection=news_db,
                 text=chunk,
-                company_name=request.company_name,
+                company_name=company_name,
                 source="news",
                 doc_id=doc_id,
                 chunk_index=idx

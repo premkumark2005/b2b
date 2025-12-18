@@ -9,8 +9,12 @@ const api = axios.create({
   },
 });
 
-export const uploadWebsiteData = async (data) => {
-  const response = await api.post('/website/upload', data);
+export const uploadWebsiteData = async (formData) => {
+  const response = await axios.post(`${API_BASE_URL}/website/upload`, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
   return response.data;
 };
 
@@ -23,13 +27,21 @@ export const uploadProductData = async (formData) => {
   return response.data;
 };
 
-export const uploadJobData = async (data) => {
-  const response = await api.post('/job/upload', data);
+export const uploadJobData = async (formData) => {
+  const response = await axios.post(`${API_BASE_URL}/job/upload`, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
   return response.data;
 };
 
-export const uploadNewsData = async (data) => {
-  const response = await api.post('/news/upload', data);
+export const uploadNewsData = async (formData) => {
+  const response = await axios.post(`${API_BASE_URL}/news/upload`, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
   return response.data;
 };
 

@@ -1,5 +1,6 @@
-from fastapi import APIRouter, HTTPException
-from models.schemas import WebsiteUploadRequest, UploadResponse
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from typing import Optional
+from models.schemas import UploadResponse
 from utils.scraper import scrape_with_zenrows
 from utils.html_parser import html_to_text, extract_keywords
 from database.chromadb_setup import get_web_db, insert_into_collection
@@ -8,38 +9,39 @@ import uuid
 router = APIRouter()
 
 @router.post("/upload", response_model=UploadResponse)
-async def upload_website_data(request: WebsiteUploadRequest):
+async def upload_website_data(
+    company_name: str = Form(...),
+    url: Optional[str] = Form(None),
+    html_file: Optional[UploadFile] = File(None)
+):
     """
     Endpoint 1: Website Data Upload
     
     User can provide:
     a) Website URL
-    b) Raw HTML content
-    c) Plain text
+    b) HTML file upload
     
     Processes and stores in web_db collection.
     """
     try:
-        print(f"Received website upload request for company: {request.company_name}")
+        print(f"Received website upload request for company: {company_name}")
         text = ""
         
         # Process based on input type
-        if request.url:
-            print(f"Processing URL: {request.url}")
+        if html_file:
+            print(f"Processing HTML file: {html_file.filename}")
+            html_content = await html_file.read()
+            html_text = html_content.decode('utf-8')
+            text = html_to_text(html_text)
+            print("HTML file parsed successfully")
+        elif url:
+            print(f"Processing URL: {url}")
             # Scrape using ZenRows API ONLY
-            html = scrape_with_zenrows(request.url)
+            html = scrape_with_zenrows(url)
             text = html_to_text(html)
             print("URL scraped and parsed successfully")
-        elif request.html_content:
-            print("Processing HTML content")
-            # Parse HTML to text
-            text = html_to_text(request.html_content)
-        elif request.plain_text:
-            print("Processing plain text")
-            # Use plain text directly
-            text = request.plain_text
         else:
-            raise HTTPException(status_code=400, detail="Must provide URL, HTML content, or plain text")
+            raise HTTPException(status_code=400, detail="Must provide URL or HTML file")
         
         print(f"Cleaned text length: {len(text)} characters")
         
@@ -53,13 +55,13 @@ async def upload_website_data(request: WebsiteUploadRequest):
         web_db = get_web_db()
         
         for idx, chunk in enumerate(chunks):
-            doc_id = f"web_{request.company_name}_{idx}_{uuid.uuid4().hex[:8]}"
+            doc_id = f"web_{company_name}_{idx}_{uuid.uuid4().hex[:8]}"
             
             print(f"Storing chunk {idx} in ChromaDB with doc_id: {doc_id}")
             insert_into_collection(
                 collection=web_db,
                 text=chunk,
-                company_name=request.company_name,
+                company_name=company_name,
                 source="website",
                 doc_id=doc_id,
                 chunk_index=idx
@@ -69,7 +71,7 @@ async def upload_website_data(request: WebsiteUploadRequest):
         return UploadResponse(
             status="success",
             message="Website data stored in web_db",
-            company_name=request.company_name
+            company_name=company_name
         )
         
     except HTTPException:

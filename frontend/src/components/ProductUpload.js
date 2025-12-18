@@ -3,15 +3,12 @@ import './WebsiteUpload.css';
 import { uploadProductData } from '../services/api';
 
 const ProductUpload = ({ companyName, onSuccess }) => {
-  const [inputType, setInputType] = useState('pdf');
+  const [inputType, setInputType] = useState('text');
   const [pdfFile, setPdfFile] = useState(null);
+  const [htmlFile, setHtmlFile] = useState(null);
   const [plainText, setPlainText] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
-
-  const handleFileChange = (e) => {
-    setPdfFile(e.target.files[0]);
-  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -30,6 +27,8 @@ const ProductUpload = ({ companyName, onSuccess }) => {
       
       if (inputType === 'pdf' && pdfFile) {
         formData.append('pdf_file', pdfFile);
+      } else if (inputType === 'html' && htmlFile) {
+        formData.append('html_file', htmlFile);
       } else if (inputType === 'text') {
         formData.append('plain_text', plainText);
       }
@@ -39,8 +38,8 @@ const ProductUpload = ({ companyName, onSuccess }) => {
       
       // Clear form
       setPdfFile(null);
+      setHtmlFile(null);
       setPlainText('');
-      if (e.target.pdf_file) e.target.pdf_file.value = '';
       
       if (onSuccess) onSuccess();
     } catch (error) {
@@ -58,39 +57,35 @@ const ProductUpload = ({ companyName, onSuccess }) => {
           <label>
             <input
               type="radio"
-              value="pdf"
-              checked={inputType === 'pdf'}
-              onChange={(e) => setInputType(e.target.value)}
-            />
-            PDF Upload
-          </label>
-          <label>
-            <input
-              type="radio"
               value="text"
               checked={inputType === 'text'}
               onChange={(e) => setInputType(e.target.value)}
             />
-            Plain Text
+            Text Input
+          </label>
+          <label>
+            <input
+              type="radio"
+              value="html"
+              checked={inputType === 'html'}
+              onChange={(e) => setInputType(e.target.value)}
+            />
+            HTML File
+          </label>
+          <label>
+            <input
+              type="radio"
+              value="pdf"
+              checked={inputType === 'pdf'}
+              onChange={(e) => setInputType(e.target.value)}
+            />
+            PDF File
           </label>
         </div>
 
-        {inputType === 'pdf' && (
-          <div className="file-input-wrapper">
-            <label>Upload PDF Brochure:</label>
-            <input
-              type="file"
-              name="pdf_file"
-              accept=".pdf"
-              onChange={handleFileChange}
-              required
-            />
-          </div>
-        )}
-
         {inputType === 'text' && (
           <textarea
-            placeholder="Paste product information here"
+            placeholder="Paste product descriptions, brochures, datasheets..."
             value={plainText}
             onChange={(e) => setPlainText(e.target.value)}
             rows="6"
@@ -98,8 +93,32 @@ const ProductUpload = ({ companyName, onSuccess }) => {
           />
         )}
 
+        {inputType === 'html' && (
+          <div>
+            <input
+              type="file"
+              accept=".html,.htm"
+              onChange={(e) => setHtmlFile(e.target.files[0])}
+              required
+            />
+            {htmlFile && <p className="file-name">📄 {htmlFile.name}</p>}
+          </div>
+        )}
+
+        {inputType === 'pdf' && (
+          <div>
+            <input
+              type="file"
+              accept=".pdf"
+              onChange={(e) => setPdfFile(e.target.files[0])}
+              required
+            />
+            {pdfFile && <p className="file-name">📄 {pdfFile.name}</p>}
+          </div>
+        )}
+
         <button type="submit" disabled={loading}>
-          {loading ? 'Uploading...' : 'Upload Product Data'}
+          {loading ? '⏳ Uploading...' : '📤 Upload Product Data'}
         </button>
       </form>
       {message && <p className="message">{message}</p>}
