@@ -3,10 +3,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
 import uvicorn
+from pathlib import Path
 
 from routes import website_routes, product_routes, job_routes, news_routes, profile_routes
-from database.chromadb_setup import init_chromadb
+from database.chromadb_setup import init_chromadb, get_embedding_model
 from database.mongodb_setup import init_mongodb
+from services.industry_matcher import init_industry_matcher
 
 app = FastAPI(title="B2B Data Fusion Engine")
 
@@ -24,7 +26,13 @@ app.add_middleware(
 async def startup_event():
     init_chromadb()
     init_mongodb()
-    print("✅ ChromaDB and MongoDB initialized")
+    
+    # Initialize industry matcher with CSV path and embedding model
+    csv_path = Path(__file__).parent.parent / "sub_Industry_Classification(in).csv"
+    embedding_model = get_embedding_model()
+    init_industry_matcher(str(csv_path), embedding_model)
+    
+    print("✅ ChromaDB, MongoDB, and Industry Matcher initialized")
 
 # Health check
 @app.get("/")

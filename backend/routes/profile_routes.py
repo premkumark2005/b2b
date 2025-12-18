@@ -4,13 +4,17 @@ from database.chromadb_setup import (
     get_web_db, get_product_db, get_job_db, get_news_db,
     query_collection, query_collection_with_query
 )
-from database.mongodb_setup import insert_company_profile, get_company_profile
+from database.mongodb_setup import (
+    insert_company_profile, get_company_profile,
+    insert_industry_mapping, get_industry_mapping
+)
 from services.llm_service import (
     extract_with_tinyllama,
     extract_business_overview,
     extract_hiring_focus,
     extract_recent_events
 )
+from services.industry_matcher import get_industry_matcher
 from datetime import datetime
 from typing import Dict, List
 
@@ -256,6 +260,48 @@ async def generate_unified_profile(request: ProfileGenerateRequest):
         print(f"   - Hiring focus: {len(extracted_fields['hiring_focus'])} roles (confidence: {confidence_scores.get('hiring_focus', 0)})")
         print(f"   - Recent events: {len(extracted_fields['key_recent_events'])} events (confidence: {confidence_scores.get('key_recent_events', 0)})")
         print("="*80 + "\n")
+        
+        # Step 5: SEMANTIC INDUSTRY CLASSIFICATION MATCHING
+        print("\n" + "="*80)
+        print("INDUSTRY CLASSIFICATION MATCHING:")
+        print("="*80)
+        
+        # Create combined company text for matching
+        combined_company_text = f"""
+{extracted_fields.get('business_summary', '')}
+Products: {', '.join(extracted_fields.get('product_lines', []))}
+Industries: {', '.join(extracted_fields.get('target_industries', []))}
+"""
+        
+        # Match company to industry classification
+        matcher = get_industry_matcher()
+        industry_match = matcher.match_company(combined_company_text, company_name)
+        
+        if industry_match:
+            print(f"✅ Industry Match Found:")
+            print(f"   - Matched Level: {industry_match['matched_level']}")
+            print(f"   - Sector: {industry_match['sector']}")
+            print(f"   - Industry: {industry_match['industry']}")
+            print(f"   - Sub-Industry: {industry_match['sub_industry']}")
+            print(f"   - SIC Code: {industry_match['sic_code']}")
+            print(f"   - Confidence: {industry_match['confidence']:.3f}")
+            print("="*80 + "\n")
+            
+            # Store industry mapping in MongoDB
+            insert_industry_mapping(
+                company_name=company_name,
+                company_domain=company_name.lower().replace(' ', ''),  # Simple domain extraction
+                matched_level=industry_match['matched_level'],
+                sector=industry_match['sector'],
+                industry=industry_match['industry'],
+                sub_industry=industry_match['sub_industry'],
+                sic_code=industry_match['sic_code'],
+                sic_description=industry_match['sic_description'],
+                confidence=industry_match['confidence']
+            )
+        else:
+            print("⚠️ No industry classification match found")
+            print("="*80 + "\n")
         
         # Step 6: Store in MongoDB with confidence scores
         profile_id = insert_company_profile(company_name, extracted_fields, confidence_scores)

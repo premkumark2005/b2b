@@ -458,36 +458,48 @@ def extract_recent_events(context: str) -> list:
     if not context or len(context.strip()) < 20:
         return []
     
-    # Limit context
-    max_length = 1500
+    # Increased limit to capture full news context
+    max_length = 3000
     if len(context) > max_length:
         context = context[:max_length] + "\n...[truncated]"
     
-    prompt = f"""Extract recent events and announcements from the news snippets below.
+    prompt = f"""Extract recent events, announcements, and milestones from the text below.
 
-⚠️ RULES:
-- Use ONLY the news text provided
-- Extract specific events (e.g., "Launched new AI platform", "Acquired Company X")
-- Do NOT infer or make up events
-- If no events are mentioned, return []
+⚠️ CRITICAL RULES:
+- Use ONLY the text provided below
+- Extract SPECIFIC events with details (funding amounts, dates, partnerships, product launches, acquisitions, expansions)
+- Look for keywords: announced, launched, raised, acquired, partnered, received, expanded, opened, secured, approved
+- Each event should include concrete details (amounts, names, locations, dates)
+- Do NOT infer or make up any information
+- If no specific events found, return []
 
-NEWS SNIPPETS:
+TEXT:
 {context}
 
-Return ONLY a JSON array of events:
+Return ONLY a JSON array of events.
+Good examples:
+- "Raised $50M Series B funding led by XYZ Ventures in Q3 2023"
+- "Launched AI-powered EHR platform in September 2024"
+- "Partnered with Mayo Clinic for clinical trials"
+- "Received FDA approval for medical device"
+
+JSON array:
 {{"recent_events": ["event1", "event2"]}}
 
 JSON:"""
     
     try:
+        logger.info(f"📋 Events context length: {len(context)} chars")
+        logger.info(f"📋 Events context preview: {context[:500]}...")
+        
         response = ollama.chat(
             model='llama3.2',
             messages=[{"role": "user", "content": prompt}],
-            options={"temperature": 0.1, "num_predict": 200}
+            options={"temperature": 0.1, "num_predict": 500}
         )
         
         response_text = response['message']['content']
-        logger.info(f"Events extraction raw: {response_text[:200]}")
+        logger.info(f"Events extraction raw response: {response_text}")
         
         extracted = parse_llm_json_response(response_text)
         
@@ -499,11 +511,41 @@ JSON:"""
         else:
             events = []
         
-        # Validate against context
-        validated_events = filter_against_context(events, context)
-        logger.info(f"✅ Extracted {len(validated_events)} recent events")
+        # Convert objects to strings if needed
+        string_events = []
+        for event in events:
+            if isinstance(event, dict):
+                # Prioritize 'details' field, then construct from parts
+                if 'details' in event and event['details']:
+                    string_events.append(str(event['details']))
+                else:
+                    # Construct from components
+                    parts = []
+                    if 'type' in event:
+                        parts.append(event['type'])
+                    if 'amount' in event:
+                        parts.append(f"${event['amount']}")
+                    if 'date' in event:
+                        parts.append(f"in {event['date']}")
+                    if 'investor' in event:
+                        parts.append(f"led by {event['investor']}")
+                    if 'description' in event:
+                        parts.append(event['description'])
+                    
+                    # Fallback: use all values
+                    if not parts:
+                        parts = [str(v) for v in event.values() if v]
+                    
+                    string_events.append(' '.join(parts))
+            elif isinstance(event, str):
+                string_events.append(event)
+            else:
+                string_events.append(str(event))
         
-        return validated_events
+        logger.info(f"✅ Extracted {len(string_events)} recent events")
+        logger.info(f"Events: {string_events[:3]}")  # Show first 3
+        
+        return string_events
         
     except Exception as e:
         logger.error(f"Recent events extraction failed: {e}")

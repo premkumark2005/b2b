@@ -8,6 +8,7 @@ web_db = None
 product_db = None
 job_db = None
 news_db = None
+embedding_function_instance = None  # Store embedding function globally
 
 # Custom embedding function using SentenceTransformer
 class SentenceTransformerEmbedding:
@@ -37,7 +38,7 @@ def init_chromadb():
     - job_db
     - news_db
     """
-    global chroma_client, web_db, product_db, job_db, news_db
+    global chroma_client, web_db, product_db, job_db, news_db, embedding_function_instance
     
     try:
         # Initialize ChromaDB client (local, lightweight)
@@ -51,25 +52,25 @@ def init_chromadb():
         
         # Create custom embedding function
         print("Initializing custom embedding function...")
-        embedding_function = SentenceTransformerEmbedding()
+        embedding_function_instance = SentenceTransformerEmbedding()  # Store globally
         
         # Create or get collections with custom embedding
         print("Creating/getting collections...")
         web_db = chroma_client.get_or_create_collection(
             name=WEB_COLLECTION,
-            embedding_function=embedding_function
+            embedding_function=embedding_function_instance
         )
         product_db = chroma_client.get_or_create_collection(
             name=PRODUCT_COLLECTION,
-            embedding_function=embedding_function
+            embedding_function=embedding_function_instance
         )
         job_db = chroma_client.get_or_create_collection(
             name=JOB_COLLECTION,
-            embedding_function=embedding_function
+            embedding_function=embedding_function_instance
         )
         news_db = chroma_client.get_or_create_collection(
             name=NEWS_COLLECTION,
-            embedding_function=embedding_function
+            embedding_function=embedding_function_instance
         )
     except Exception as e:
         print(f"Error initializing ChromaDB: {e}")
@@ -92,6 +93,15 @@ def get_job_db():
 
 def get_news_db():
     return news_db
+
+def get_embedding_model():
+    """
+    Get the underlying SentenceTransformer model for reuse.
+    Returns the model instance from the global embedding function.
+    """
+    if embedding_function_instance is None:
+        raise RuntimeError("ChromaDB not initialized. Call init_chromadb() first.")
+    return embedding_function_instance.model
 
 def insert_into_collection(collection, text: str, company_name: str, source: str, doc_id: str, chunk_index: int = 0):
     """
