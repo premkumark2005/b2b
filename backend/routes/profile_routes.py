@@ -2,10 +2,15 @@ from fastapi import APIRouter, HTTPException
 from models.schemas import ProfileGenerateRequest, ProfileResponse
 from database.chromadb_setup import (
     get_web_db, get_product_db, get_job_db, get_news_db,
-    query_collection
+    query_collection, query_collection_with_query
 )
 from database.mongodb_setup import insert_company_profile, get_company_profile
-from services.llm_service import extract_with_tinyllama
+from services.llm_service import (
+    extract_with_tinyllama,
+    extract_business_overview,
+    extract_hiring_focus,
+    extract_recent_events
+)
 from datetime import datetime
 
 router = APIRouter()
@@ -32,10 +37,20 @@ async def generate_unified_profile(request: ProfileGenerateRequest):
         job_db = get_job_db()
         news_db = get_news_db()
         
-        web_docs = query_collection(web_db, company_name)
-        product_docs = query_collection(product_db, company_name)
-        job_docs = query_collection(job_db, company_name)
-        news_docs = query_collection(news_db, company_name)
+        # FIELD-SPECIFIC RETRIEVAL with semantic queries
+        # Business overview fields: website + product data
+        web_docs = query_collection_with_query(web_db, company_name, 
+            f"{company_name} business overview products services industries markets", n_results=8)
+        product_docs = query_collection_with_query(product_db, company_name,
+            f"{company_name} products offerings solutions technology", n_results=5)
+        
+        # Hiring focus: job postings ONLY
+        job_docs = query_collection_with_query(job_db, company_name,
+            f"{company_name} hiring jobs careers roles openings engineers positions", n_results=5)
+        
+        # Recent events: news ONLY
+        news_docs = query_collection_with_query(news_db, company_name,
+            f"{company_name} news announcements launches acquisitions updates events", n_results=5)
         
         # DEBUG: Log retrieval results
         print("\n" + "="*80)
@@ -98,8 +113,50 @@ async def generate_unified_profile(request: ProfileGenerateRequest):
                 detail=f"No data found for company: {company_name}"
             )
         
-        # Step 4 & 5: Send to llama3.2 and extract structured data
-        extracted_fields = extract_with_tinyllama(combined_context)
+        # Step 4: FIELD-SPECIFIC EXTRACTION (separate LLM calls)
+        print("\n" + "="*80)
+        print("FIELD-SPECIFIC EXTRACTION:")
+        print("="*80)
+        
+        # Extract business overview fields (business_summary, product_lines, target_industries, regions)
+        overview_context = f"""
+=== WEBSITE INFORMATION ===
+{' '.join(web_docs)}
+
+=== PRODUCT INFORMATION ===
+{' '.join(product_docs)}
+"""
+        print(f"1. Extracting business overview from {len(web_docs)} web + {len(product_docs)} product chunks")
+        overview_fields = extract_business_overview(overview_context)
+        
+        # Extract hiring_focus from job postings ONLY
+        job_context = ' '.join(job_docs)
+        print(f"2. Extracting hiring_focus from {len(job_docs)} job chunks")
+        hiring_focus = extract_hiring_focus(job_context) if job_docs else []
+        
+        # Extract recent_events from news ONLY
+        news_context = ' '.join(news_docs)
+        print(f"3. Extracting recent_events from {len(news_docs)} news chunks")
+        recent_events = extract_recent_events(news_context) if news_docs else []
+        
+        # Merge all extracted fields
+        extracted_fields = {
+            "business_summary": overview_fields.get("business_summary", ""),
+            "product_lines": overview_fields.get("product_lines", []),
+            "target_industries": overview_fields.get("target_industries", []),
+            "regions": overview_fields.get("regions", []),
+            "hiring_focus": hiring_focus,
+            "key_recent_events": recent_events
+        }
+        
+        print(f"✅ EXTRACTION COMPLETE:")
+        print(f"   - Business summary: {len(extracted_fields['business_summary'])} chars")
+        print(f"   - Product lines: {len(extracted_fields['product_lines'])} items")
+        print(f"   - Industries: {len(extracted_fields['target_industries'])} items")
+        print(f"   - Regions: {len(extracted_fields['regions'])} items")
+        print(f"   - Hiring focus: {len(extracted_fields['hiring_focus'])} roles")
+        print(f"   - Recent events: {len(extracted_fields['key_recent_events'])} events")
+        print("="*80 + "\n")
         
         # Step 6: Store in MongoDB
         profile_id = insert_company_profile(company_name, extracted_fields)

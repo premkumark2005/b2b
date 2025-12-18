@@ -315,6 +315,236 @@ def filter_hallucinations(extracted_data: dict, context: str) -> dict:
     
     return filtered
 
+def extract_business_overview(context: str) -> dict:
+    """
+    Extract business overview fields: business_summary, product_lines, 
+    target_industries, regions.
+    
+    Args:
+        context: Website and product content
+        
+    Returns:
+        dict: Extracted overview fields
+    """
+    # Limit context
+    max_length = 2000
+    if len(context) > max_length:
+        context = context[:max_length] + "\n...[truncated]"
+    
+    prompt = f"""Extract business information from the context below.
+
+⚠️ RULES:
+- Use ONLY the provided context
+- Do NOT use prior knowledge
+- If information is missing, return [] or ""
+
+CONTEXT:
+{context}
+
+Extract:
+- business_summary: Brief description (1-2 sentences from context)
+- product_lines: Specific product/service names mentioned
+- target_industries: Industries mentioned as targets/markets
+- regions: Geographic regions/countries mentioned
+
+Return ONLY this JSON:
+{{
+  "business_summary": "...",
+  "product_lines": [...],
+  "target_industries": [...],
+  "regions": [...]
+}}
+
+JSON:"""
+    
+    try:
+        response = ollama.chat(
+            model='llama3.2',
+            messages=[{"role": "user", "content": prompt}],
+            options={"temperature": 0.2, "num_predict": 400}
+        )
+        
+        response_text = response['message']['content']
+        extracted = parse_llm_json_response(response_text)
+        
+        # Validate against context
+        validated = {
+            "business_summary": str(extracted.get("business_summary", "")).strip(),
+            "product_lines": filter_against_context(extracted.get("product_lines", []), context),
+            "target_industries": filter_against_context(extracted.get("target_industries", []), context),
+            "regions": filter_against_context(extracted.get("regions", []), context)
+        }
+        
+        return validated
+        
+    except Exception as e:
+        logger.error(f"Business overview extraction failed: {e}")
+        return {"business_summary": "", "product_lines": [], "target_industries": [], "regions": []}
+
+def extract_hiring_focus(context: str) -> list:
+    """
+    Extract hiring_focus from job postings ONLY.
+    
+    Args:
+        context: Job posting content
+        
+    Returns:
+        list: Job roles/positions mentioned
+    """
+    if not context or len(context.strip()) < 20:
+        return []
+    
+    # Limit context
+    max_length = 1500
+    if len(context) > max_length:
+        context = context[:max_length] + "\n...[truncated]"
+    
+    prompt = f"""Extract job roles and positions from the job postings below.
+
+⚠️ RULES:
+- Use ONLY the job posting text provided
+- Extract specific role names (e.g., "Software Engineer", "Data Scientist")
+- Do NOT infer or guess roles
+- If no roles are mentioned, return []
+
+JOB POSTINGS:
+{context}
+
+Return ONLY a JSON array of role names:
+{{"hiring_focus": ["role1", "role2"]}}
+
+JSON:"""
+    
+    try:
+        response = ollama.chat(
+            model='llama3.2',
+            messages=[{"role": "user", "content": prompt}],
+            options={"temperature": 0.1, "num_predict": 200}
+        )
+        
+        response_text = response['message']['content']
+        logger.info(f"Hiring extraction raw: {response_text[:200]}")
+        
+        extracted = parse_llm_json_response(response_text)
+        
+        # Handle both dict and list responses
+        if isinstance(extracted, dict):
+            roles = extracted.get("hiring_focus", [])
+        elif isinstance(extracted, list):
+            roles = extracted
+        else:
+            roles = []
+        
+        # Validate against context
+        validated_roles = filter_against_context(roles, context)
+        logger.info(f"✅ Extracted {len(validated_roles)} hiring roles")
+        
+        return validated_roles
+        
+    except Exception as e:
+        logger.error(f"Hiring focus extraction failed: {e}")
+        return []
+
+def extract_recent_events(context: str) -> list:
+    """
+    Extract recent_events from news snippets ONLY.
+    
+    Args:
+        context: News content
+        
+    Returns:
+        list: Recent events/announcements
+    """
+    if not context or len(context.strip()) < 20:
+        return []
+    
+    # Limit context
+    max_length = 1500
+    if len(context) > max_length:
+        context = context[:max_length] + "\n...[truncated]"
+    
+    prompt = f"""Extract recent events and announcements from the news snippets below.
+
+⚠️ RULES:
+- Use ONLY the news text provided
+- Extract specific events (e.g., "Launched new AI platform", "Acquired Company X")
+- Do NOT infer or make up events
+- If no events are mentioned, return []
+
+NEWS SNIPPETS:
+{context}
+
+Return ONLY a JSON array of events:
+{{"recent_events": ["event1", "event2"]}}
+
+JSON:"""
+    
+    try:
+        response = ollama.chat(
+            model='llama3.2',
+            messages=[{"role": "user", "content": prompt}],
+            options={"temperature": 0.1, "num_predict": 200}
+        )
+        
+        response_text = response['message']['content']
+        logger.info(f"Events extraction raw: {response_text[:200]}")
+        
+        extracted = parse_llm_json_response(response_text)
+        
+        # Handle both dict and list responses
+        if isinstance(extracted, dict):
+            events = extracted.get("recent_events", [])
+        elif isinstance(extracted, list):
+            events = extracted
+        else:
+            events = []
+        
+        # Validate against context
+        validated_events = filter_against_context(events, context)
+        logger.info(f"✅ Extracted {len(validated_events)} recent events")
+        
+        return validated_events
+        
+    except Exception as e:
+        logger.error(f"Recent events extraction failed: {e}")
+        return []
+
+def filter_against_context(items: list, context: str) -> list:
+    """
+    Remove items that don't appear in the context (hallucination filter).
+    
+    Args:
+        items: List of extracted values
+        context: Original context text
+        
+    Returns:
+        list: Filtered items that exist in context
+    """
+    if not items or not context:
+        return []
+    
+    context_lower = context.lower()
+    validated = []
+    
+    for item in items:
+        item_str = str(item).strip()
+        if not item_str or len(item_str) < 2:
+            continue
+        
+        # Check if item appears in context (case-insensitive)
+        words = item_str.lower().split()
+        if len(words) == 1:
+            # Single word: must appear in context
+            if words[0] in context_lower:
+                validated.append(item_str)
+        else:
+            # Multi-word: at least 50% of words must appear
+            matching = sum(1 for word in words if word in context_lower)
+            if matching >= len(words) * 0.5:
+                validated.append(item_str)
+    
+    return validated
+
 def get_fallback_structure() -> dict:
     """
     Return a safe fallback structure when LLM extraction fails.

@@ -148,3 +148,28 @@ def query_collection(collection, company_name: str, n_results: int = 15):
     if results and results['documents'] and len(results['documents']) > 0:
         return results['documents'][0]  # First query result set
     return []
+
+def query_collection_with_query(collection, company_name: str, custom_query: str, n_results: int = 5):
+    """
+    Retrieve documents using a CUSTOM semantic query.
+    Used for field-specific retrieval (e.g., hiring, news).
+    
+    Args:
+        collection: ChromaDB collection object
+        company_name: Company name to filter by
+        custom_query: Custom semantic query text
+        n_results: Number of results (default 5)
+    
+    Returns:
+        List of document texts ranked by semantic similarity
+    """
+    results = collection.query(
+        query_texts=[custom_query],
+        n_results=n_results,
+        where={"company_name": company_name},
+        include=["documents", "metadatas"]
+    )
+    
+    if results and results['documents'] and len(results['documents']) > 0:
+        return results['documents'][0]
+    return []
