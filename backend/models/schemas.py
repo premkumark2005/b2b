@@ -29,6 +29,7 @@ class NewsUploadRequest(BaseModel):
 # Profile Generation Request
 class ProfileGenerateRequest(BaseModel):
     company_name: str
+    company_domain: Optional[str] = ""
 
 # Response Models
 class UploadResponse(BaseModel):

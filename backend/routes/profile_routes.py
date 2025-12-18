@@ -60,6 +60,8 @@ async def generate_unified_profile(request: ProfileGenerateRequest):
     """
     try:
         company_name = request.company_name
+        company_domain = request.company_domain or ""
+        company_domain = request.company_domain or ""
         
         # Step 1: Retrieve relevant documents from all collections
         web_db = get_web_db()
@@ -290,7 +292,7 @@ Industries: {', '.join(extracted_fields.get('target_industries', []))}
             # Store industry mapping in MongoDB
             insert_industry_mapping(
                 company_name=company_name,
-                company_domain=company_name.lower().replace(' ', ''),  # Simple domain extraction
+                company_domain=company_domain,  # Use actual domain from frontend
                 matched_level=industry_match['matched_level'],
                 sector=industry_match['sector'],
                 industry=industry_match['industry'],

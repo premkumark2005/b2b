@@ -9,6 +9,7 @@ import { generateProfile } from './services/api';
 
 function App() {
   const [companyName, setCompanyName] = useState('');
+  const [companyDomain, setCompanyDomain] = useState('');
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
@@ -29,7 +30,7 @@ function App() {
     setProfile(null);
 
     try {
-      const result = await generateProfile(companyName);
+      const result = await generateProfile(companyName, companyDomain);
       setProfile(result);
       setMessage('✅ Unified profile generated successfully!');
     } catch (error) {
@@ -58,6 +59,17 @@ function App() {
             onChange={(e) => setCompanyName(e.target.value)}
             className="company-input"
           />
+          
+          <label htmlFor="companyDomain" style={{marginTop: '15px'}}>Company Domain (Optional):</label>
+          <input
+            id="companyDomain"
+            type="text"
+            placeholder="Enter company domain (e.g., techcorp.com)"
+            value={companyDomain}
+            onChange={(e) => setCompanyDomain(e.target.value)}
+            className="company-input"
+          />
+          
           <p className="upload-status">
             {uploadCount > 0 ? `${uploadCount} data source(s) uploaded` : 'No data uploaded yet'}
           </p>

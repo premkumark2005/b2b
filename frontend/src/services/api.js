@@ -33,8 +33,11 @@ export const uploadNewsData = async (data) => {
   return response.data;
 };
 
-export const generateProfile = async (companyName) => {
-  const response = await api.post('/profile/generate', { company_name: companyName });
+export const generateProfile = async (companyName, companyDomain = '') => {
+  const response = await api.post('/profile/generate', { 
+    company_name: companyName,
+    company_domain: companyDomain 
+  });
   return response.data;
 };
 
