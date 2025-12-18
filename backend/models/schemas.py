@@ -38,5 +38,5 @@ class UploadResponse(BaseModel):
 
 class ProfileResponse(BaseModel):
     company_name: str
-    extracted_fields: dict
+    profile: dict  # Contains fields with {"value": ..., "confidence": ...} structure
     created_at: str

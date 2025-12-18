@@ -1,12 +1,13 @@
 import React from 'react';
 import './ProfileDisplay.css';
+import ConfidenceBar from './ConfidenceBar';
 
 const ProfileDisplay = ({ profile }) => {
   if (!profile) {
     return null;
   }
 
-  const { company_name, extracted_fields } = profile;
+  const { company_name, profile: profileData } = profile;
 
   return (
     <div className="profile-display">
@@ -15,7 +16,8 @@ const ProfileDisplay = ({ profile }) => {
       {/* Business Summary Card */}
       <div className="profile-card summary-card">
         <h3>📊 Business Summary</h3>
-        <p>{extracted_fields.business_summary || 'No summary available'}</p>
+        <ConfidenceBar value={profileData.business_summary.confidence} />
+        <p>{profileData.business_summary.value || 'No summary available'}</p>
       </div>
 
       {/* Structured Fields Grid */}
@@ -23,9 +25,10 @@ const ProfileDisplay = ({ profile }) => {
         {/* Product Lines */}
         <div className="profile-card">
           <h3>🛍️ Product Lines</h3>
-          {extracted_fields.product_lines && extracted_fields.product_lines.length > 0 ? (
+          <ConfidenceBar value={profileData.product_lines.confidence} />
+          {profileData.product_lines.value && profileData.product_lines.value.length > 0 ? (
             <ul>
-              {extracted_fields.product_lines.map((product, index) => (
+              {profileData.product_lines.value.map((product, index) => (
                 <li key={index}>{product}</li>
               ))}
             </ul>
@@ -37,9 +40,10 @@ const ProfileDisplay = ({ profile }) => {
         {/* Target Industries */}
         <div className="profile-card">
           <h3>🏭 Target Industries</h3>
-          {extracted_fields.target_industries && extracted_fields.target_industries.length > 0 ? (
+          <ConfidenceBar value={profileData.target_industries.confidence} />
+          {profileData.target_industries.value && profileData.target_industries.value.length > 0 ? (
             <ul>
-              {extracted_fields.target_industries.map((industry, index) => (
+              {profileData.target_industries.value.map((industry, index) => (
                 <li key={index}>{industry}</li>
               ))}
             </ul>
@@ -51,9 +55,10 @@ const ProfileDisplay = ({ profile }) => {
         {/* Regions */}
         <div className="profile-card">
           <h3>🌍 Regions</h3>
-          {extracted_fields.regions && extracted_fields.regions.length > 0 ? (
+          <ConfidenceBar value={profileData.regions.confidence} />
+          {profileData.regions.value && profileData.regions.value.length > 0 ? (
             <ul>
-              {extracted_fields.regions.map((region, index) => (
+              {profileData.regions.value.map((region, index) => (
                 <li key={index}>{region}</li>
               ))}
             </ul>
@@ -65,15 +70,25 @@ const ProfileDisplay = ({ profile }) => {
         {/* Hiring Focus */}
         <div className="profile-card">
           <h3>💼 Hiring Focus</h3>
-          <p>{extracted_fields.hiring_focus || 'No hiring data available'}</p>
+          <ConfidenceBar value={profileData.hiring_focus.confidence} />
+          {profileData.hiring_focus.value && profileData.hiring_focus.value.length > 0 ? (
+            <ul>
+              {profileData.hiring_focus.value.map((role, index) => (
+                <li key={index}>{role}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="no-data">No hiring data available</p>
+          )}
         </div>
 
         {/* Key Recent Events */}
         <div className="profile-card full-width">
           <h3>📰 Key Recent Events</h3>
-          {extracted_fields.key_recent_events && extracted_fields.key_recent_events.length > 0 ? (
+          <ConfidenceBar value={profileData.key_recent_events.confidence} />
+          {profileData.key_recent_events.value && profileData.key_recent_events.value.length > 0 ? (
             <ul>
-              {extracted_fields.key_recent_events.map((event, index) => (
+              {profileData.key_recent_events.value.map((event, index) => (
                 <li key={index}>{event}</li>
               ))}
             </ul>

@@ -12,8 +12,34 @@ from services.llm_service import (
     extract_recent_events
 )
 from datetime import datetime
+from typing import Dict, List
 
 router = APIRouter()
+
+def calculate_confidence(field_sources: Dict[str, List[str]]) -> Dict[str, float]:
+    """
+    Calculate confidence scores based on number of sources contributing to each field.
+    
+    Formula: confidence = (number_of_sources_contributing) / (total_sources)
+    Total sources = 4 (website, product, jobs, news)
+    
+    Args:
+        field_sources: Dict mapping field names to list of contributing sources
+        Example: {"business_summary": ["website", "product"], "hiring_focus": ["jobs"]}
+    
+    Returns:
+        Dict mapping field names to confidence scores (0.0 to 1.0)
+    """
+    TOTAL_SOURCES = 4
+    confidence_scores = {}
+    
+    for field, sources in field_sources.items():
+        # Count unique sources
+        unique_sources = len(set(sources))
+        confidence = unique_sources / TOTAL_SOURCES
+        confidence_scores[field] = round(confidence, 2)
+    
+    return confidence_scores
 
 @router.post("/generate", response_model=ProfileResponse)
 async def generate_unified_profile(request: ProfileGenerateRequest):
@@ -149,24 +175,76 @@ async def generate_unified_profile(request: ProfileGenerateRequest):
             "key_recent_events": recent_events
         }
         
+        # Track which sources contributed to each field
+        field_sources = {}
+        
+        # Business overview fields come from website + product (if they have data)
+        sources_for_overview = []
+        if web_docs:
+            sources_for_overview.append("website")
+        if product_docs:
+            sources_for_overview.append("product")
+        
+        field_sources["business_summary"] = sources_for_overview if extracted_fields["business_summary"] else []
+        field_sources["product_lines"] = sources_for_overview if extracted_fields["product_lines"] else []
+        field_sources["target_industries"] = sources_for_overview if extracted_fields["target_industries"] else []
+        field_sources["regions"] = sources_for_overview if extracted_fields["regions"] else []
+        
+        # Hiring focus comes from jobs only
+        field_sources["hiring_focus"] = ["jobs"] if extracted_fields["hiring_focus"] else []
+        
+        # Recent events come from news only
+        field_sources["key_recent_events"] = ["news"] if extracted_fields["key_recent_events"] else []
+        
+        # Calculate confidence scores
+        confidence_scores = calculate_confidence(field_sources)
+        
         print(f"✅ EXTRACTION COMPLETE:")
-        print(f"   - Business summary: {len(extracted_fields['business_summary'])} chars")
-        print(f"   - Product lines: {len(extracted_fields['product_lines'])} items")
-        print(f"   - Industries: {len(extracted_fields['target_industries'])} items")
-        print(f"   - Regions: {len(extracted_fields['regions'])} items")
-        print(f"   - Hiring focus: {len(extracted_fields['hiring_focus'])} roles")
-        print(f"   - Recent events: {len(extracted_fields['key_recent_events'])} events")
+        print(f"   - Business summary: {len(extracted_fields['business_summary'])} chars (confidence: {confidence_scores.get('business_summary', 0)})")
+        print(f"   - Product lines: {len(extracted_fields['product_lines'])} items (confidence: {confidence_scores.get('product_lines', 0)})")
+        print(f"   - Industries: {len(extracted_fields['target_industries'])} items (confidence: {confidence_scores.get('target_industries', 0)})")
+        print(f"   - Regions: {len(extracted_fields['regions'])} items (confidence: {confidence_scores.get('regions', 0)})")
+        print(f"   - Hiring focus: {len(extracted_fields['hiring_focus'])} roles (confidence: {confidence_scores.get('hiring_focus', 0)})")
+        print(f"   - Recent events: {len(extracted_fields['key_recent_events'])} events (confidence: {confidence_scores.get('key_recent_events', 0)})")
         print("="*80 + "\n")
         
-        # Step 6: Store in MongoDB
-        profile_id = insert_company_profile(company_name, extracted_fields)
+        # Step 6: Store in MongoDB with confidence scores
+        profile_id = insert_company_profile(company_name, extracted_fields, confidence_scores)
         
-        # Step 6: Return unified profile
+        # Step 7: Return unified profile with confidence scores
         profile = get_company_profile(company_name)
+        
+        # Format response with confidence scores
+        profile_with_confidence = {
+            "business_summary": {
+                "value": profile['extracted_fields'].get('business_summary', ''),
+                "confidence": profile.get('confidence_scores', {}).get('business_summary', 0.0)
+            },
+            "product_lines": {
+                "value": profile['extracted_fields'].get('product_lines', []),
+                "confidence": profile.get('confidence_scores', {}).get('product_lines', 0.0)
+            },
+            "target_industries": {
+                "value": profile['extracted_fields'].get('target_industries', []),
+                "confidence": profile.get('confidence_scores', {}).get('target_industries', 0.0)
+            },
+            "regions": {
+                "value": profile['extracted_fields'].get('regions', []),
+                "confidence": profile.get('confidence_scores', {}).get('regions', 0.0)
+            },
+            "hiring_focus": {
+                "value": profile['extracted_fields'].get('hiring_focus', []),
+                "confidence": profile.get('confidence_scores', {}).get('hiring_focus', 0.0)
+            },
+            "key_recent_events": {
+                "value": profile['extracted_fields'].get('key_recent_events', []),
+                "confidence": profile.get('confidence_scores', {}).get('key_recent_events', 0.0)
+            }
+        }
         
         return ProfileResponse(
             company_name=profile['company_name'],
-            extracted_fields=profile['extracted_fields'],
+            profile=profile_with_confidence,
             created_at=profile['created_at'].isoformat()
         )
         
@@ -178,7 +256,7 @@ async def generate_unified_profile(request: ProfileGenerateRequest):
 @router.get("/{company_name}", response_model=ProfileResponse)
 async def get_profile(company_name: str):
     """
-    Retrieve existing company profile from MongoDB.
+    Retrieve existing company profile from MongoDB with confidence scores.
     """
     try:
         profile = get_company_profile(company_name)
@@ -189,9 +267,37 @@ async def get_profile(company_name: str):
                 detail=f"Profile not found for company: {company_name}"
             )
         
+        # Format response with confidence scores
+        profile_with_confidence = {
+            "business_summary": {
+                "value": profile['extracted_fields'].get('business_summary', ''),
+                "confidence": profile.get('confidence_scores', {}).get('business_summary', 0.0)
+            },
+            "product_lines": {
+                "value": profile['extracted_fields'].get('product_lines', []),
+                "confidence": profile.get('confidence_scores', {}).get('product_lines', 0.0)
+            },
+            "target_industries": {
+                "value": profile['extracted_fields'].get('target_industries', []),
+                "confidence": profile.get('confidence_scores', {}).get('target_industries', 0.0)
+            },
+            "regions": {
+                "value": profile['extracted_fields'].get('regions', []),
+                "confidence": profile.get('confidence_scores', {}).get('regions', 0.0)
+            },
+            "hiring_focus": {
+                "value": profile['extracted_fields'].get('hiring_focus', []),
+                "confidence": profile.get('confidence_scores', {}).get('hiring_focus', 0.0)
+            },
+            "key_recent_events": {
+                "value": profile['extracted_fields'].get('key_recent_events', []),
+                "confidence": profile.get('confidence_scores', {}).get('key_recent_events', 0.0)
+            }
+        }
+        
         return ProfileResponse(
             company_name=profile['company_name'],
-            extracted_fields=profile['extracted_fields'],
+            profile=profile_with_confidence,
             created_at=profile['created_at'].isoformat()
         )
         

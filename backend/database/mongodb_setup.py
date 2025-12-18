@@ -22,9 +22,9 @@ def init_mongodb():
 def get_profiles_collection():
     return profiles_collection
 
-def insert_company_profile(company_name: str, extracted_fields: dict):
+def insert_company_profile(company_name: str, extracted_fields: dict, confidence_scores: dict = None):
     """
-    Store/update final unified profile in MongoDB.
+    Store/update final unified profile in MongoDB with confidence scores.
     Uses replace_one with upsert=True to replace old profile with new one.
     
     Schema:
@@ -35,8 +35,16 @@ def insert_company_profile(company_name: str, extracted_fields: dict):
             product_lines: list,
             target_industries: list,
             regions: list,
-            hiring_focus: str,
+            hiring_focus: list,
             key_recent_events: list
+        },
+        confidence_scores: {
+            business_summary: float,
+            product_lines: float,
+            target_industries: float,
+            regions: float,
+            hiring_focus: float,
+            key_recent_events: float
         },
         created_at: datetime,
         updated_at: datetime
@@ -45,6 +53,7 @@ def insert_company_profile(company_name: str, extracted_fields: dict):
     profile = {
         "company_name": company_name,
         "extracted_fields": extracted_fields,
+        "confidence_scores": confidence_scores or {},
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow()
     }
