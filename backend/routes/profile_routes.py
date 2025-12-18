@@ -64,28 +64,45 @@ async def generate_unified_profile(request: ProfileGenerateRequest):
         news_db = get_news_db()
         
         # FIELD-SPECIFIC RETRIEVAL with semantic queries
-        # Business overview fields: website + product data
-        web_docs = query_collection_with_query(web_db, company_name, 
+        # Query ALL sources for each field type using targeted semantic queries
+        
+        # Business overview: website + product focused
+        web_docs_business = query_collection_with_query(web_db, company_name, 
             f"{company_name} business overview products services industries markets", n_results=8)
-        product_docs = query_collection_with_query(product_db, company_name,
+        product_docs_business = query_collection_with_query(product_db, company_name,
             f"{company_name} products offerings solutions technology", n_results=5)
+        job_docs_business = query_collection_with_query(job_db, company_name,
+            f"{company_name} business company overview", n_results=2)
+        news_docs_business = query_collection_with_query(news_db, company_name,
+            f"{company_name} company business overview", n_results=2)
         
-        # Hiring focus: job postings ONLY
-        job_docs = query_collection_with_query(job_db, company_name,
-            f"{company_name} hiring jobs careers roles openings engineers positions", n_results=5)
+        # Hiring focus: ALL sources, hiring-focused query
+        web_docs_hiring = query_collection_with_query(web_db, company_name,
+            f"{company_name} hiring jobs careers team recruitment talent", n_results=3)
+        product_docs_hiring = query_collection_with_query(product_db, company_name,
+            f"{company_name} team careers hiring", n_results=2)
+        job_docs_hiring = query_collection_with_query(job_db, company_name,
+            f"{company_name} hiring jobs careers roles openings engineers positions", n_results=8)
+        news_docs_hiring = query_collection_with_query(news_db, company_name,
+            f"{company_name} hiring recruitment jobs expansion team", n_results=3)
         
-        # Recent events: news ONLY
-        news_docs = query_collection_with_query(news_db, company_name,
-            f"{company_name} news announcements launches acquisitions updates events", n_results=5)
+        # Recent events: ALL sources, event-focused query
+        web_docs_events = query_collection_with_query(web_db, company_name,
+            f"{company_name} news announcements updates launches", n_results=3)
+        product_docs_events = query_collection_with_query(product_db, company_name,
+            f"{company_name} new launch release announcement", n_results=2)
+        job_docs_events = query_collection_with_query(job_db, company_name,
+            f"{company_name} expansion growth new office", n_results=2)
+        news_docs_events = query_collection_with_query(news_db, company_name,
+            f"{company_name} news announcements launches acquisitions updates events", n_results=8)
         
         # DEBUG: Log retrieval results
         print("\n" + "="*80)
         print("CHUNK RETRIEVAL RESULTS:")
         print("="*80)
-        print(f"Website chunks: {len(web_docs)}")
-        print(f"Product chunks: {len(product_docs)}")
-        print(f"Job chunks: {len(job_docs)}")
-        print(f"News chunks: {len(news_docs)}")
+        print(f"Business overview chunks: Web={len(web_docs_business)}, Product={len(product_docs_business)}, Job={len(job_docs_business)}, News={len(news_docs_business)}")
+        print(f"Hiring chunks: Web={len(web_docs_hiring)}, Product={len(product_docs_hiring)}, Job={len(job_docs_hiring)}, News={len(news_docs_hiring)}")
+        print(f"Events chunks: Web={len(web_docs_events)}, Product={len(product_docs_events)}, Job={len(job_docs_events)}, News={len(news_docs_events)}")
         print("="*80)
         
         # Step 2: Deduplicate chunks (remove exact duplicates and very similar ones)
@@ -101,43 +118,21 @@ async def generate_unified_profile(request: ProfileGenerateRequest):
                     unique.append(chunk)
             return unique
         
-        web_docs = deduplicate_chunks(web_docs)
-        product_docs = deduplicate_chunks(product_docs)
-        job_docs = deduplicate_chunks(job_docs)
-        news_docs = deduplicate_chunks(news_docs)
+        # Deduplicate each category
+        web_docs_business = deduplicate_chunks(web_docs_business)
+        product_docs_business = deduplicate_chunks(product_docs_business)
+        job_docs_business = deduplicate_chunks(job_docs_business)
+        news_docs_business = deduplicate_chunks(news_docs_business)
         
-        print(f"After deduplication: Web={len(web_docs)}, Product={len(product_docs)}, Job={len(job_docs)}, News={len(news_docs)}")
+        web_docs_hiring = deduplicate_chunks(web_docs_hiring)
+        product_docs_hiring = deduplicate_chunks(product_docs_hiring)
+        job_docs_hiring = deduplicate_chunks(job_docs_hiring)
+        news_docs_hiring = deduplicate_chunks(news_docs_hiring)
         
-        # Step 3: Combine retrieved documents into ONE structured context
-        combined_context = f"""
-=== WEBSITE INFORMATION ===
-{' '.join(web_docs)}
-
-=== PRODUCT INFORMATION ===
-{' '.join(product_docs)}
-
-=== JOB POSTINGS ===
-{' '.join(job_docs)}
-
-=== NEWS & EVENTS ===
-{' '.join(news_docs)}
-"""
-        
-        # DEBUG: Log context being sent to LLM
-        print("\n" + "="*80)
-        print("CONTEXT SENT TO LLM:")
-        print("="*80)
-        print(combined_context[:1500])  # First 1500 chars
-        print("...")
-        print("="*80)
-        print(f"Total context length: {len(combined_context)} characters")
-        print("="*80 + "\n")
-        
-        if not any([web_docs, product_docs, job_docs, news_docs]):
-            raise HTTPException(
-                status_code=404,
-                detail=f"No data found for company: {company_name}"
-            )
+        web_docs_events = deduplicate_chunks(web_docs_events)
+        product_docs_events = deduplicate_chunks(product_docs_events)
+        job_docs_events = deduplicate_chunks(job_docs_events)
+        news_docs_events = deduplicate_chunks(news_docs_events)
         
         # Step 4: FIELD-SPECIFIC EXTRACTION (separate LLM calls)
         print("\n" + "="*80)
@@ -147,23 +142,53 @@ async def generate_unified_profile(request: ProfileGenerateRequest):
         # Extract business overview fields (business_summary, product_lines, target_industries, regions)
         overview_context = f"""
 === WEBSITE INFORMATION ===
-{' '.join(web_docs)}
+{' '.join(web_docs_business)}
 
 === PRODUCT INFORMATION ===
-{' '.join(product_docs)}
+{' '.join(product_docs_business)}
+
+=== JOB POSTINGS ===
+{' '.join(job_docs_business)}
+
+=== NEWS & EVENTS ===
+{' '.join(news_docs_business)}
 """
-        print(f"1. Extracting business overview from {len(web_docs)} web + {len(product_docs)} product chunks")
+        print(f"1. Extracting business overview from all sources: Web={len(web_docs_business)}, Product={len(product_docs_business)}, Job={len(job_docs_business)}, News={len(news_docs_business)}")
         overview_fields = extract_business_overview(overview_context)
         
-        # Extract hiring_focus from job postings ONLY
-        job_context = ' '.join(job_docs)
-        print(f"2. Extracting hiring_focus from {len(job_docs)} job chunks")
-        hiring_focus = extract_hiring_focus(job_context) if job_docs else []
+        # Extract hiring_focus from ALL sources with hiring-focused context
+        hiring_context = f"""
+=== WEBSITE INFORMATION ===
+{' '.join(web_docs_hiring)}
+
+=== PRODUCT INFORMATION ===
+{' '.join(product_docs_hiring)}
+
+=== JOB POSTINGS ===
+{' '.join(job_docs_hiring)}
+
+=== NEWS & EVENTS ===
+{' '.join(news_docs_hiring)}
+"""
+        print(f"2. Extracting hiring_focus from all sources: Web={len(web_docs_hiring)}, Product={len(product_docs_hiring)}, Job={len(job_docs_hiring)}, News={len(news_docs_hiring)}")
+        hiring_focus = extract_hiring_focus(hiring_context) if any([web_docs_hiring, product_docs_hiring, job_docs_hiring, news_docs_hiring]) else []
         
-        # Extract recent_events from news ONLY
-        news_context = ' '.join(news_docs)
-        print(f"3. Extracting recent_events from {len(news_docs)} news chunks")
-        recent_events = extract_recent_events(news_context) if news_docs else []
+        # Extract recent_events from ALL sources with event-focused context
+        events_context = f"""
+=== WEBSITE INFORMATION ===
+{' '.join(web_docs_events)}
+
+=== PRODUCT INFORMATION ===
+{' '.join(product_docs_events)}
+
+=== JOB POSTINGS ===
+{' '.join(job_docs_events)}
+
+=== NEWS & EVENTS ===
+{' '.join(news_docs_events)}
+"""
+        print(f"3. Extracting recent_events from all sources: Web={len(web_docs_events)}, Product={len(product_docs_events)}, Job={len(job_docs_events)}, News={len(news_docs_events)}")
+        recent_events = extract_recent_events(events_context) if any([web_docs_events, product_docs_events, job_docs_events, news_docs_events]) else []
         
         # Merge all extracted fields
         extracted_fields = {
@@ -175,26 +200,50 @@ async def generate_unified_profile(request: ProfileGenerateRequest):
             "key_recent_events": recent_events
         }
         
-        # Track which sources contributed to each field
+        # Track which sources contributed to each field (based on which sources had data)
         field_sources = {}
         
-        # Business overview fields come from website + product (if they have data)
+        # Business overview fields: track which sources provided chunks
         sources_for_overview = []
-        if web_docs:
+        if web_docs_business:
             sources_for_overview.append("website")
-        if product_docs:
+        if product_docs_business:
             sources_for_overview.append("product")
+        if job_docs_business:
+            sources_for_overview.append("jobs")
+        if news_docs_business:
+            sources_for_overview.append("news")
         
         field_sources["business_summary"] = sources_for_overview if extracted_fields["business_summary"] else []
         field_sources["product_lines"] = sources_for_overview if extracted_fields["product_lines"] else []
         field_sources["target_industries"] = sources_for_overview if extracted_fields["target_industries"] else []
         field_sources["regions"] = sources_for_overview if extracted_fields["regions"] else []
         
-        # Hiring focus comes from jobs only
-        field_sources["hiring_focus"] = ["jobs"] if extracted_fields["hiring_focus"] else []
+        # Hiring focus: track which sources provided chunks
+        sources_for_hiring = []
+        if web_docs_hiring:
+            sources_for_hiring.append("website")
+        if product_docs_hiring:
+            sources_for_hiring.append("product")
+        if job_docs_hiring:
+            sources_for_hiring.append("jobs")
+        if news_docs_hiring:
+            sources_for_hiring.append("news")
         
-        # Recent events come from news only
-        field_sources["key_recent_events"] = ["news"] if extracted_fields["key_recent_events"] else []
+        field_sources["hiring_focus"] = sources_for_hiring if extracted_fields["hiring_focus"] else []
+        
+        # Recent events: track which sources provided chunks
+        sources_for_events = []
+        if web_docs_events:
+            sources_for_events.append("website")
+        if product_docs_events:
+            sources_for_events.append("product")
+        if job_docs_events:
+            sources_for_events.append("jobs")
+        if news_docs_events:
+            sources_for_events.append("news")
+        
+        field_sources["key_recent_events"] = sources_for_events if extracted_fields["key_recent_events"] else []
         
         # Calculate confidence scores
         confidence_scores = calculate_confidence(field_sources)
